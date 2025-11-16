@@ -9,11 +9,12 @@ import (
 
 	"github.com/erh/vmodutils"
 	"github.com/erh/vmodutils/touch"
+	"go.viam.com/rdk/components/generic"
 	"go.viam.com/rdk/logging"
 	"go.viam.com/rdk/referenceframe"
 	"go.viam.com/rdk/resource"
 	"go.viam.com/rdk/robot"
-	generic "go.viam.com/rdk/services/generic"
+	genericservice "go.viam.com/rdk/services/generic"
 )
 
 var (
@@ -22,7 +23,7 @@ var (
 )
 
 func init() {
-	resource.RegisterService(generic.API, PoseTracker,
+	resource.RegisterService(genericservice.API, PoseTracker,
 		resource.Registration[resource.Resource, *Config]{
 			Constructor: newPoseTracker,
 		},
@@ -30,14 +31,19 @@ func init() {
 }
 
 type Config struct {
-	TargetPoseName    string  `json:"target_pose_name"`
-	PTZCameraName     string  `json:"ptz_camera_name"`
-	UpdateRateHz      float64 `json:"update_rate_hz"`
-	PanSpeedAngleDeg  float64 `json:"pan_speed_angle_deg"`
-	TiltSpeedAngleDeg float64 `json:"tilt_speed_angle_deg"`
-	ZoomMode          string  `json:"zoom_mode"`
-	FixedZoom         float64 `json:"fixed_zoom"`
-	EnableOnStart     bool    `json:"enable_on_start"`
+	TargetPoseName     string     `json:"target_pose_name"`
+	PTZCameraName      string     `json:"ptz_camera_name"`
+	OnvifPTZClientName string     `json:"onvif_ptz_client_name"`
+	UpdateRateHz       float64    `json:"update_rate_hz"`
+	PanGain            float64    `json:"pan_gain"`     // Speed gain for pan (default 0.01 = 1°→1% speed)
+	TiltGain           float64    `json:"tilt_gain"`    // Speed gain for tilt (default 0.01)
+	MaxSpeed           float64    `json:"max_speed"`    // Max continuous speed (0.0-1.0, default 0.5)
+	DeadbandDeg        float64    `json:"deadband_deg"` // Stop if error < this (degrees, default 2.0)
+	ZoomMode           string     `json:"zoom_mode"`
+	FixedZoom          float64    `json:"fixed_zoom"`
+	ZoomRangeMts       [2]float64 `json:"zoom_range_mts"`
+	ZoomSpeed          float64    `json:"zoom_speed"`
+	EnableOnStart      bool       `json:"enable_on_start"`
 }
 
 // Validate ensures all parts of the config are valid and important fields exist.
@@ -52,20 +58,36 @@ func (cfg *Config) Validate(path string) ([]string, []string, error) {
 	if cfg.PTZCameraName == "" {
 		return nil, nil, errors.New("ptz_camera_name is required")
 	}
+	if cfg.OnvifPTZClientName == "" {
+		return nil, nil, errors.New("onvif_ptz_client_name is required")
+	}
 	if cfg.UpdateRateHz <= 0 {
 		return nil, nil, errors.New("update_rate_hz must be greater than 0")
 	}
-	if cfg.PanSpeedAngleDeg <= 0 {
-		return nil, nil, errors.New("pan_speed_angle_deg must be greater than 0")
+	// Set defaults for optional parameters
+	if cfg.PanGain == 0 {
+		cfg.PanGain = 0.01 // 1° error → 1% speed
 	}
-	if cfg.TiltSpeedAngleDeg <= 0 {
-		return nil, nil, errors.New("tilt_speed_angle_deg must be greater than 0")
+	if cfg.TiltGain == 0 {
+		cfg.TiltGain = 0.01 // 1° error → 1% speed
 	}
-	if cfg.ZoomMode != "fixed" && cfg.ZoomMode != "auto" {
-		return nil, nil, errors.New("zoom_mode must be either 'fixed' or 'auto'")
+	if cfg.MaxSpeed == 0 {
+		cfg.MaxSpeed = 0.5 // 50% max speed
 	}
-	if cfg.ZoomMode == "fixed" && cfg.FixedZoom <= 0 {
-		return nil, nil, errors.New("fixed_zoom must be greater than 0")
+	if cfg.DeadbandDeg == 0 {
+		cfg.DeadbandDeg = 2.0 // Stop within 2°
+	}
+	if cfg.ZoomSpeed == 0 {
+		cfg.ZoomSpeed = 0.1 // Slow zoom for continuous mode
+	}
+	if cfg.ZoomRangeMts[0] <= 0 {
+		return nil, nil, errors.New("zoom_range_mts[0] must be greater than 0")
+	}
+	if cfg.ZoomRangeMts[1] <= 0 {
+		return nil, nil, errors.New("zoom_range_mts[1] must be greater than 0")
+	}
+	if cfg.ZoomRangeMts[0] >= cfg.ZoomRangeMts[1] {
+		return nil, nil, errors.New("zoom_range_mts[0] must be less than zoom_range_mts[1]")
 	}
 	return nil, nil, nil
 }
@@ -81,8 +103,11 @@ type poseTracker struct {
 	cancelCtx  context.Context
 	cancelFunc func()
 
-	robotClient    robot.Robot
-	targetPoseName string
+	robotClient        robot.Robot
+	targetPoseName     string
+	onvifPTZClientName string
+	zoomRangeMinMts    float64
+	zoomRangeMaxMts    float64
 }
 
 func newPoseTracker(ctx context.Context, deps resource.Dependencies, rawConf resource.Config, logger logging.Logger) (resource.Resource, error) {
@@ -105,13 +130,16 @@ func NewPoseTracker(ctx context.Context, deps resource.Dependencies, name resour
 	}
 
 	s := &poseTracker{
-		name:           name,
-		logger:         logger,
-		cfg:            conf,
-		cancelCtx:      cancelCtx,
-		cancelFunc:     cancelFunc,
-		robotClient:    robotClient,
-		targetPoseName: conf.TargetPoseName,
+		name:               name,
+		logger:             logger,
+		cfg:                conf,
+		cancelCtx:          cancelCtx,
+		cancelFunc:         cancelFunc,
+		robotClient:        robotClient,
+		targetPoseName:     conf.TargetPoseName,
+		onvifPTZClientName: conf.OnvifPTZClientName,
+		zoomRangeMinMts:    conf.ZoomRangeMts[0],
+		zoomRangeMaxMts:    conf.ZoomRangeMts[1],
 	}
 
 	if conf.EnableOnStart {
@@ -233,14 +261,48 @@ func (t *poseTracker) calculatePanTiltZoom(targetPoseInCameraFrame *referencefra
 	// Use horizontal distance to ensure tilt stays in valid range [-90, 90]
 	tilt := math.Atan2(y, horizontalDist) * 180.0 / math.Pi
 
-	// Calculate zoom based on distance (you'll need to tune this mapping)
-	// For now, using a simple inverse relationship: closer = more zoom
-	// This will need adjustment based on your specific needs
-	zoom := distance
-
 	t.logger.Infof("Distance: %.1fmm, Pan: %.1f°, Tilt: %.1f°", distance, pan, tilt)
 
-	return pan, tilt, zoom
+	// For relative-move tracking, we return angles in degrees and normalized zoom
+	// Pan and tilt represent how much the camera needs to rotate to point at the target
+
+	// Convert zoom to normalized coordinates based on distance
+	// Map distance range to zoom range (0.0 to 1.0)
+	var zoomNormalized float64
+
+	// Convert config values from meters to millimeters if needed
+	zoomRangeMinMm := t.zoomRangeMinMts * 1000.0
+	zoomRangeMaxMm := t.zoomRangeMaxMts * 1000.0
+	zoomRange := zoomRangeMaxMm - zoomRangeMinMm
+
+	t.logger.Infof("Zoom config: min=%.1fm (%.1fmm), max=%.1fm (%.1fmm), distance=%.1fmm",
+		t.zoomRangeMinMts, zoomRangeMinMm, t.zoomRangeMaxMts, zoomRangeMaxMm, distance)
+
+	if zoomRange <= 0 {
+		// Invalid or unset zoom range, use a fixed zoom
+		t.logger.Warnf("Invalid zoom range [%.1f, %.1f]mm, using fixed zoom", zoomRangeMinMm, zoomRangeMaxMm)
+		zoomNormalized = 0.5 // Middle zoom level
+	} else {
+		// Normalize distance to 0-1 range
+		// Closer distances (smaller values) = more zoom (higher values)
+		// Farther distances (larger values) = less zoom (lower values)
+		zoomNormalized = 1.0 - ((distance - zoomRangeMinMm) / zoomRange)
+
+		// Clamp to valid range [0, 1]
+		if zoomNormalized < 0.0 {
+			t.logger.Infof("Distance %.1fmm below min %.1fmm, clamping zoom to 1.0", distance, zoomRangeMinMm)
+			zoomNormalized = 1.0 // Max zoom (closest)
+		} else if zoomNormalized > 1.0 {
+			t.logger.Infof("Distance %.1fmm above max %.1fmm, clamping zoom to 0.0", distance, zoomRangeMaxMm)
+			zoomNormalized = 0.0 // Min zoom (farthest)
+		}
+	}
+
+	// For continuous-move, return angles as-is
+	// movePTZ will convert them to speeds and handle deadband
+	t.logger.Infof("Tracking error: Pan=%.2f°, Tilt=%.2f°, Zoom=%.3f", pan, tilt, zoomNormalized)
+
+	return pan, tilt, zoomNormalized
 }
 
 /*
@@ -261,19 +323,65 @@ Continuous: -1.0 (full reverse) to 1.0 (full forward).
 Relative/Absolute: Speed parameters (pan_speed, tilt_speed, zoom_speed between 0.0 and 1.0) are optional. If no speed parameters are provided, the camera uses its default speed. If any speed parameter is provided, the Speed element is included in the request (using defaults of 0.5 for Relative or 1.0 for Absolute for any unspecified speed components).
 */
 
-func (t *poseTracker) movePTZ(ctx context.Context, pan float64, tilt float64, zoom float64) error {
-	t.logger.Infof("Moving PTZ")
-	t.logger.Infof("Pan: %f, Tilt: %f, Zoom: %f", pan, tilt, zoom)
+func (t *poseTracker) movePTZ(ctx context.Context, panError float64, tiltError float64, zoomNormalized float64) error {
+	onvifPTZClientName := resource.NewName(generic.API, t.onvifPTZClientName)
+	onvifPTZClient, err := t.robotClient.ResourceByName(onvifPTZClientName)
+	if err != nil {
+		return fmt.Errorf("failed to get onvif PTZ client: %w", err)
+	}
 
-	// Convert pan and tilt to normalized coordinates
-	panNormalized := pan / 180.0  // -1.0 to 1.0
-	tiltNormalized := tilt / 90.0 // -1.0 to 1.0
+	// Check if we're within deadband (target is centered)
+	panAbs := math.Abs(panError)
+	tiltAbs := math.Abs(tiltError)
 
-	// Convert zoom to normalized coordinates
-	// In order to do this, we need to know the range of the zoom of the PTZ camera.
-	zoomNormalized := zoom / 1.0 // 0.0 to 1.0
+	if panAbs < t.cfg.DeadbandDeg && tiltAbs < t.cfg.DeadbandDeg {
+		// Target is centered - stop movement
+		t.logger.Infof("Target centered (Pan=%.2f°, Tilt=%.2f° < %.2f° deadband) - Stopping",
+			panError, tiltError, t.cfg.DeadbandDeg)
 
-	t.logger.Infof("Pan normalized: %f, Tilt normalized: %f, Zoom normalized: %f", panNormalized, tiltNormalized, zoomNormalized)
+		_, err := onvifPTZClient.DoCommand(ctx, map[string]interface{}{
+			"command":  "stop",
+			"pan_tilt": true,
+			"zoom":     false,
+		})
+		if err != nil {
+			t.logger.Errorf("Failed to stop PTZ: %v", err)
+			return err
+		}
+		return nil
+	}
 
+	// Convert angle error to speed (-1.0 to 1.0)
+	panSpeed := panError * t.cfg.PanGain
+	tiltSpeed := tiltError * t.cfg.TiltGain
+
+	// Clamp to max speed
+	if panSpeed > t.cfg.MaxSpeed {
+		panSpeed = t.cfg.MaxSpeed
+	} else if panSpeed < -t.cfg.MaxSpeed {
+		panSpeed = -t.cfg.MaxSpeed
+	}
+
+	if tiltSpeed > t.cfg.MaxSpeed {
+		tiltSpeed = t.cfg.MaxSpeed
+	} else if tiltSpeed < -t.cfg.MaxSpeed {
+		tiltSpeed = -t.cfg.MaxSpeed
+	}
+
+	t.logger.Infof("Moving PTZ: Pan speed=%.3f, Tilt speed=%.3f, Zoom speed=%.3f",
+		panSpeed, tiltSpeed, t.cfg.ZoomSpeed)
+
+	// Use continuous-move - camera moves continuously at these speeds
+	ptzMovementResponse, err := onvifPTZClient.DoCommand(ctx, map[string]interface{}{
+		"command":    "continuous-move",
+		"pan_speed":  panSpeed,
+		"tilt_speed": tiltSpeed,
+		"zoom_speed": t.cfg.ZoomSpeed,
+	})
+	if err != nil {
+		t.logger.Errorf("Failed to move PTZ: %v", err)
+		return err
+	}
+	t.logger.Debugf("PTZ movement response: %+v", ptzMovementResponse)
 	return nil
 }
