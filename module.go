@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/erh/vmodutils"
@@ -156,56 +157,65 @@ func (t *ptzPoseTrackerPtzArmPoseTracker) trackingLoop(ctx context.Context) {
 			// 1. Get the target pose in the frame system
 			targetPosePart := touch.FindPart(fsc, t.targetPoseName)
 			if targetPosePart == nil {
-				t.logger.Error("can't find frame for %v", t.targetPoseName)
+				t.logger.Errorf("can't find frame for %v", t.targetPoseName)
 				continue
 			}
 
 			cameraPart := touch.FindPart(fsc, t.cfg.PTZCameraName)
 			if cameraPart == nil {
-				t.logger.Error("can't find frame for %v", t.cfg.PTZCameraName)
+				t.logger.Errorf("can't find frame for %v", t.cfg.PTZCameraName)
 				continue
 			}
 
 			targetPose, err := t.robotClient.GetPose(ctx, t.targetPoseName, "", []*referenceframe.LinkInFrame{}, map[string]interface{}{})
 			if err != nil {
-				t.logger.Error("Failed to get pose: %v", err)
+				t.logger.Errorf("Failed to get pose: %v", err)
 				continue
 			}
-			t.logger.Info("Target pose: %v", targetPose)
+			t.logger.Infof("Target pose: %+v", targetPose)
 
 			targetPoseInCameraFrame, err := t.robotClient.TransformPose(ctx, targetPosePart.FrameConfig.PoseInFrame, t.cfg.PTZCameraName, []*referenceframe.LinkInFrame{})
 			if err != nil {
-				t.logger.Error("Failed to transform target pose to camera frame: %v", err)
+				t.logger.Errorf("Failed to transform target pose to camera frame: %v", err)
 				continue
 			}
-			t.logger.Info("Target pose in camera frame 2: %v", targetPoseInCameraFrame)
+			t.logger.Infof("Target pose in camera frame 2: %+v", targetPoseInCameraFrame)
 
 			// 3. Calculate pan/tilt angles needed to center the target in the PTZ camera frame
-			pan, tilt := t.calculatePanTilt(targetPoseInCameraFrame)
+			pan, tilt, zoom := t.calculatePanTiltZoom(targetPoseInCameraFrame)
+			t.logger.Infof("Pan: %f, Tilt: %f, Zoom: %f", pan, tilt, zoom)
 
-			// 4. Calculate zoom based on distance (optional)
-			zoom := t.calculateZoom(targetPoseInCameraFrame)
-
-			// 5. Send relative move command to PTZ
+			// 4. Send relative move command to PTZ
 			err = t.movePTZ(ctx, pan, tilt, zoom)
 			if err != nil {
-				t.logger.Error("Failed to move PTZ: %v", err)
+				t.logger.Errorf("Failed to move PTZ: %v", err)
 			}
 		}
 	}
 }
 
-func (t *ptzPoseTrackerPtzArmPoseTracker) calculatePanTilt(targetPoseInCameraFrame *referenceframe.PoseInFrame) (float64, float64) {
-	t.logger.Info("Calculating pan and tilt")
-	return 0, 0
-}
+func (t *ptzPoseTrackerPtzArmPoseTracker) calculatePanTiltZoom(targetPoseInCameraFrame *referenceframe.PoseInFrame) (float64, float64, float64) {
+	t.logger.Infof("Calculating pan and tilt")
+	t.logger.Infof("Target pose in camera frame: %+v", targetPoseInCameraFrame)
 
-func (t *ptzPoseTrackerPtzArmPoseTracker) calculateZoom(targetPoseInCameraFrame *referenceframe.PoseInFrame) float64 {
-	t.logger.Info("Calculating zoom")
-	return 0
+	// Position relative to camera
+	x := targetPoseInCameraFrame.Pose().Point().X // Right/Left
+	y := targetPoseInCameraFrame.Pose().Point().Y // Up/Down
+	z := targetPoseInCameraFrame.Pose().Point().Z // Forward/Back (distance)
+
+	// Calculate angles in degrees
+	// Pan: rotation around vertical axis
+	pan := math.Atan2(x, z) * 180.0 / math.Pi
+
+	// Tilt: rotation around horizontal axis
+	tilt := math.Atan2(y, z) * 180.0 / math.Pi
+
+	zoom := math.Sqrt(x*x + y*y + z*z)
+
+	return pan, tilt, zoom
 }
 
 func (t *ptzPoseTrackerPtzArmPoseTracker) movePTZ(ctx context.Context, pan float64, tilt float64, zoom float64) error {
-	t.logger.Info("Moving PTZ")
+	t.logger.Infof("Moving PTZ")
 	return nil
 }
