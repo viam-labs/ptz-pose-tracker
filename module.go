@@ -17,7 +17,7 @@ import (
 )
 
 var (
-	PtzArmPoseTracker = resource.NewModel("viamlabs", "ptz-pose-tracker", "ptz-arm-pose-tracker")
+	PtzArmPoseTracker = resource.NewModel("viamlabs", "ptz-pose-tracker", "ptz-pose-tracker")
 	errUnimplemented  = errors.New("unimplemented")
 )
 
@@ -186,6 +186,11 @@ func (t *ptzPoseTrackerPtzArmPoseTracker) trackingLoop(ctx context.Context) {
 			}
 			t.logger.Infof("Target pose in camera frame: %+v", targetPoseInCameraFrame)
 
+			// Log position details for debugging
+			pos := targetPoseInCameraFrame.Pose().Point()
+			t.logger.Infof("Target position relative to camera: X=%.1f (right+), Y=%.1f (up+), Z=%.1f (forward+)",
+				pos.X, pos.Y, pos.Z)
+
 			// 3. Calculate pan/tilt angles needed to center the target in the PTZ camera frame
 			pan, tilt, zoom := t.calculatePanTiltZoom(targetPoseInCameraFrame)
 			t.logger.Infof("Pan: %f, Tilt: %f, Zoom: %f", pan, tilt, zoom)
@@ -204,23 +209,71 @@ func (t *ptzPoseTrackerPtzArmPoseTracker) calculatePanTiltZoom(targetPoseInCamer
 	t.logger.Infof("Target pose in camera frame: %+v", targetPoseInCameraFrame)
 
 	// Position relative to camera
-	x := targetPoseInCameraFrame.Pose().Point().X // Right/Left
-	y := targetPoseInCameraFrame.Pose().Point().Y // Up/Down
-	z := targetPoseInCameraFrame.Pose().Point().Z // Forward/Back (distance)
+	x := targetPoseInCameraFrame.Pose().Point().X // Right/Left (positive = right)
+	y := targetPoseInCameraFrame.Pose().Point().Y // Up/Down (positive = up)
+	z := targetPoseInCameraFrame.Pose().Point().Z // Forward/Back (positive = forward)
+
+	// Check if target is behind the camera
+	if z < 0 {
+		t.logger.Warnf("Target is behind camera (Z=%.1f). Cannot track.", z)
+		return 0, 0, 0
+	}
+
+	// Calculate distance for zoom
+	distance := math.Sqrt(x*x + y*y + z*z)
+
+	// Calculate horizontal distance (in XZ plane) for tilt calculation
+	horizontalDist := math.Sqrt(x*x + z*z)
 
 	// Calculate angles in degrees
-	// Pan: rotation around vertical axis
+	// Pan: rotation around vertical axis (positive = rotate right)
 	pan := math.Atan2(x, z) * 180.0 / math.Pi
 
-	// Tilt: rotation around horizontal axis
-	tilt := math.Atan2(y, z) * 180.0 / math.Pi
+	// Tilt: rotation around horizontal axis (positive = rotate up)
+	// Use horizontal distance to ensure tilt stays in valid range [-90, 90]
+	tilt := math.Atan2(y, horizontalDist) * 180.0 / math.Pi
 
-	zoom := math.Sqrt(x*x + y*y + z*z)
+	// Calculate zoom based on distance (you'll need to tune this mapping)
+	// For now, using a simple inverse relationship: closer = more zoom
+	// This will need adjustment based on your specific needs
+	zoom := distance
+
+	t.logger.Infof("Distance: %.1fmm, Pan: %.1f°, Tilt: %.1f°", distance, pan, tilt)
 
 	return pan, tilt, zoom
 }
 
+/*
+Move the PTZ camera to the given pan, tilt, and zoom.
+From Viam RTSP PTZ documentation:
+Notes
+Disclaimer: This model was made in order to fully integrate with one specific camera. I tried to generalize it to all PTZ cameras, but your mileage may vary.
+Profile Discovery: Use get-profiles command to discover valid profile tokens
+Coordinate Spaces:
+Normalized: -1.0 to 1.0 (pan/tilt), 0.0-1.0 (zoom)
+Degrees: -180° to 180° (pan), -90° to 90° (tilt)
+Absolute Moves: Use normalized coordinates (-1.0 to 1.0 for pan/tilt, 0.0 to 1.0 for zoom).
+Relative Moves:
+Normalized (degrees: false): -1.0 to 1.0 (pan/tilt/zoom).
+Degrees (degrees: true): -180° to 180° (pan), -90° to 90° (tilt). Zoom remains normalized.
+Movement Speeds:
+Continuous: -1.0 (full reverse) to 1.0 (full forward).
+Relative/Absolute: Speed parameters (pan_speed, tilt_speed, zoom_speed between 0.0 and 1.0) are optional. If no speed parameters are provided, the camera uses its default speed. If any speed parameter is provided, the Speed element is included in the request (using defaults of 0.5 for Relative or 1.0 for Absolute for any unspecified speed components).
+*/
+
 func (t *ptzPoseTrackerPtzArmPoseTracker) movePTZ(ctx context.Context, pan float64, tilt float64, zoom float64) error {
 	t.logger.Infof("Moving PTZ")
+	t.logger.Infof("Pan: %f, Tilt: %f, Zoom: %f", pan, tilt, zoom)
+
+	// Convert pan and tilt to normalized coordinates
+	panNormalized := pan / 180.0  // -1.0 to 1.0
+	tiltNormalized := tilt / 90.0 // -1.0 to 1.0
+
+	// Convert zoom to normalized coordinates
+	// In order to do this, we need to know the range of the zoom of the PTZ camera.
+	zoomNormalized := zoom / 1.0 // 0.0 to 1.0
+
+	t.logger.Infof("Pan normalized: %f, Tilt normalized: %f, Zoom normalized: %f", panNormalized, tiltNormalized, zoomNormalized)
+
 	return nil
 }
