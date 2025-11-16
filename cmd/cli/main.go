@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"ptzposetracker"
+
 	"go.viam.com/rdk/logging"
 	"go.viam.com/rdk/resource"
 	generic "go.viam.com/rdk/services/generic"
@@ -22,7 +23,16 @@ func realMain() error {
 	deps := resource.Dependencies{}
 	// can load these from a remote machine if you need
 
-	cfg := ptzposetracker.Config{}
+	cfg := ptzposetracker.Config{
+		TargetPoseName:    "target_pose_name",
+		PTZCameraName:     "ptz_camera",
+		UpdateRateHz:      10.0,
+		PanSpeedAngleDeg:  1.0,
+		TiltSpeedAngleDeg: 1.0,
+		ZoomMode:          "fixed",
+		FixedZoom:         1.0,
+		EnableOnStart:     true,
+	}
 
 	thing, err := ptzposetracker.NewPtzArmPoseTracker(ctx, deps, generic.Named("foo"), &cfg, logger)
 	if err != nil {
