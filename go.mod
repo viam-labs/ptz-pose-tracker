@@ -1,4 +1,4 @@
-module ptzposetracker
+module ptztracker
 
 go 1.25.1
 

@@ -1,4 +1,4 @@
-package ptzposetracker
+package ptztracker
 
 import (
 	"context"
@@ -17,14 +17,14 @@ import (
 )
 
 var (
-	Tracker          = resource.NewModel("viamlabs", "ptz-pose-tracker", "tracker")
+	PoseTracker      = resource.NewModel("viamlabs", "ptz-tracker", "pose-tracker")
 	errUnimplemented = errors.New("unimplemented")
 )
 
 func init() {
-	resource.RegisterService(generic.API, Tracker,
+	resource.RegisterService(generic.API, PoseTracker,
 		resource.Registration[resource.Resource, *Config]{
-			Constructor: newTracker,
+			Constructor: newPoseTracker,
 		},
 	)
 }
@@ -70,7 +70,7 @@ func (cfg *Config) Validate(path string) ([]string, []string, error) {
 	return nil, nil, nil
 }
 
-type tracker struct {
+type poseTracker struct {
 	resource.AlwaysRebuild
 
 	name resource.Name
@@ -85,16 +85,16 @@ type tracker struct {
 	targetPoseName string
 }
 
-func newTracker(ctx context.Context, deps resource.Dependencies, rawConf resource.Config, logger logging.Logger) (resource.Resource, error) {
+func newPoseTracker(ctx context.Context, deps resource.Dependencies, rawConf resource.Config, logger logging.Logger) (resource.Resource, error) {
 	conf, err := resource.NativeConfig[*Config](rawConf)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewTracker(ctx, deps, rawConf.ResourceName(), conf, logger)
+	return NewPoseTracker(ctx, deps, rawConf.ResourceName(), conf, logger)
 }
 
-func NewTracker(ctx context.Context, deps resource.Dependencies, name resource.Name, conf *Config, logger logging.Logger) (resource.Resource, error) {
+func NewPoseTracker(ctx context.Context, deps resource.Dependencies, name resource.Name, conf *Config, logger logging.Logger) (resource.Resource, error) {
 
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
 
@@ -104,7 +104,7 @@ func NewTracker(ctx context.Context, deps resource.Dependencies, name resource.N
 		return nil, fmt.Errorf("failed to connect to robot: %w", err)
 	}
 
-	s := &tracker{
+	s := &poseTracker{
 		name:           name,
 		logger:         logger,
 		cfg:            conf,
@@ -122,21 +122,21 @@ func NewTracker(ctx context.Context, deps resource.Dependencies, name resource.N
 	return s, nil
 }
 
-func (s *tracker) Name() resource.Name {
+func (s *poseTracker) Name() resource.Name {
 	return s.name
 }
 
-func (s *tracker) DoCommand(ctx context.Context, cmd map[string]interface{}) (map[string]interface{}, error) {
+func (s *poseTracker) DoCommand(ctx context.Context, cmd map[string]interface{}) (map[string]interface{}, error) {
 	return nil, fmt.Errorf("not implemented")
 }
 
-func (s *tracker) Close(context.Context) error {
+func (s *poseTracker) Close(context.Context) error {
 	// Put close code here
 	s.cancelFunc()
 	return nil
 }
 
-func (t *tracker) trackingLoop(ctx context.Context) {
+func (t *poseTracker) trackingLoop(ctx context.Context) {
 	t.logger.Info("Starting tracking loop")
 	t.logger.Info("Update rate: %f Hz", t.cfg.UpdateRateHz)
 	var updateInterval time.Duration = time.Duration(1.0 / t.cfg.UpdateRateHz * float64(time.Second))
@@ -204,7 +204,7 @@ func (t *tracker) trackingLoop(ctx context.Context) {
 	}
 }
 
-func (t *tracker) calculatePanTiltZoom(targetPoseInCameraFrame *referenceframe.PoseInFrame) (float64, float64, float64) {
+func (t *poseTracker) calculatePanTiltZoom(targetPoseInCameraFrame *referenceframe.PoseInFrame) (float64, float64, float64) {
 	t.logger.Infof("Calculating pan and tilt")
 	t.logger.Infof("Target pose in camera frame: %+v", targetPoseInCameraFrame)
 
@@ -261,7 +261,7 @@ Continuous: -1.0 (full reverse) to 1.0 (full forward).
 Relative/Absolute: Speed parameters (pan_speed, tilt_speed, zoom_speed between 0.0 and 1.0) are optional. If no speed parameters are provided, the camera uses its default speed. If any speed parameter is provided, the Speed element is included in the request (using defaults of 0.5 for Relative or 1.0 for Absolute for any unspecified speed components).
 */
 
-func (t *tracker) movePTZ(ctx context.Context, pan float64, tilt float64, zoom float64) error {
+func (t *poseTracker) movePTZ(ctx context.Context, pan float64, tilt float64, zoom float64) error {
 	t.logger.Infof("Moving PTZ")
 	t.logger.Infof("Pan: %f, Tilt: %f, Zoom: %f", pan, tilt, zoom)
 
