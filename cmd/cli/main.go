@@ -34,7 +34,7 @@ func realMain() error {
 		EnableOnStart:     true,
 	}
 
-	thing, err := ptzposetracker.NewPtzArmPoseTracker(ctx, deps, generic.Named("foo"), &cfg, logger)
+	thing, err := ptzposetracker.NewTracker(ctx, deps, generic.Named("foo"), &cfg, logger)
 	if err != nil {
 		return err
 	}
