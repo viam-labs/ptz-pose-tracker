@@ -155,31 +155,36 @@ func (t *ptzPoseTrackerPtzArmPoseTracker) trackingLoop(ctx context.Context) {
 			return
 		case <-ticker.C:
 			// 1. Get the target pose in the frame system
-			targetPosePart := touch.FindPart(fsc, t.targetPoseName)
-			if targetPosePart == nil {
+			targetFramePart := touch.FindPart(fsc, t.targetPoseName)
+			if targetFramePart == nil {
 				t.logger.Errorf("can't find frame for %v", t.targetPoseName)
 				continue
 			}
-
-			cameraPart := touch.FindPart(fsc, t.cfg.PTZCameraName)
-			if cameraPart == nil {
-				t.logger.Errorf("can't find frame for %v", t.cfg.PTZCameraName)
-				continue
-			}
-
-			targetPose, err := t.robotClient.GetPose(ctx, t.targetPoseName, "", []*referenceframe.LinkInFrame{}, map[string]interface{}{})
+			targetPose, err := t.robotClient.GetPose(ctx, targetFramePart.FrameConfig.Name(), "", []*referenceframe.LinkInFrame{}, map[string]interface{}{})
 			if err != nil {
 				t.logger.Errorf("Failed to get pose: %v", err)
 				continue
 			}
 			t.logger.Infof("Target pose: %+v", targetPose)
 
-			targetPoseInCameraFrame, err := t.robotClient.TransformPose(ctx, targetPosePart.FrameConfig.PoseInFrame, t.cfg.PTZCameraName, []*referenceframe.LinkInFrame{})
+			cameraFramePart := touch.FindPart(fsc, t.cfg.PTZCameraName)
+			if cameraFramePart == nil {
+				t.logger.Errorf("can't find frame for %v", t.cfg.PTZCameraName)
+				continue
+			}
+			cameraPose, err := t.robotClient.GetPose(ctx, cameraFramePart.FrameConfig.Name(), "", []*referenceframe.LinkInFrame{}, map[string]interface{}{})
+			if err != nil {
+				t.logger.Errorf("Failed to get pose: %v", err)
+				continue
+			}
+			t.logger.Infof("Camera pose: %+v", cameraPose)
+
+			targetPoseInCameraFrame, err := t.robotClient.TransformPose(ctx, targetPose, cameraFramePart.FrameConfig.Name(), []*referenceframe.LinkInFrame{})
 			if err != nil {
 				t.logger.Errorf("Failed to transform target pose to camera frame: %v", err)
 				continue
 			}
-			t.logger.Infof("Target pose in camera frame 2: %+v", targetPoseInCameraFrame)
+			t.logger.Infof("Target pose in camera frame: %+v", targetPoseInCameraFrame)
 
 			// 3. Calculate pan/tilt angles needed to center the target in the PTZ camera frame
 			pan, tilt, zoom := t.calculatePanTiltZoom(targetPoseInCameraFrame)
