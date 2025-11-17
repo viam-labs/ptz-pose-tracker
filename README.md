@@ -1,8 +1,8 @@
-# Module ptz-pose-tracker 
+# Module ptz-tracker 
 
 Provide a description of the purpose of the module and any relevant information.
 
-## Model viamlabs:ptz-pose-tracker:ptz-arm-pose-tracker
+## Model viamlabs:ptz-tracker:pose-tracker
 
 Provide a description of the model and any relevant information.
 

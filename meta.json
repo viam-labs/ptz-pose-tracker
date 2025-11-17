@@ -1,15 +1,15 @@
 {
   "$schema": "https://dl.viam.dev/module.schema.json",
-  "module_id": "viamlabs:ptz-pose-tracker",
+  "module_id": "viam-labs:ptz-pose-tracker",
   "visibility": "public",
   "url": "",
   "description": "Modular generic service: ptz-arm-pose-tracker",
   "models": [
     {
       "api": "rdk:service:generic",
-      "model": "viamlabs:ptz-pose-tracker:ptz-arm-pose-tracker",
+      "model": "viam-labs:ptz-pose-tracker:ptz-arm-pose-tracker",
       "short_description": "Provide a short (100 characters or less) description of this model here",
-      "markdown_link": "README.md#model-viamlabsptz-pose-trackerptz-arm-pose-tracker"
+      "markdown_link": "README.md#model-viam-labs:ptz-tracker:pose-tracker"
     }
   ],
   "applications": null,

@@ -18,7 +18,7 @@ import (
 )
 
 var (
-	PoseTracker      = resource.NewModel("viamlabs", "ptz-tracker", "pose-tracker")
+	PoseTracker      = resource.NewModel("viam-labs", "ptz-tracker", "pose-tracker")
 	errUnimplemented = errors.New("unimplemented")
 )
 
