@@ -1,12 +1,12 @@
 
 GO_BUILD_ENV :=
 GO_BUILD_FLAGS :=
-MODULE_BINARY := bin/ptz-pose-tracker
+MODULE_BINARY := bin/ptz-tracker
 
 ifeq ($(VIAM_TARGET_OS), windows)
 	GO_BUILD_ENV += GOOS=windows GOARCH=amd64
 	GO_BUILD_FLAGS := -tags no_cgo
-	MODULE_BINARY = bin/ptz-pose-tracker.exe
+	MODULE_BINARY = bin/ptz-tracker.exe
 endif
 
 $(MODULE_BINARY): Makefile go.mod *.go cmd/module/*.go 
