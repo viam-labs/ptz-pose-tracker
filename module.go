@@ -164,6 +164,10 @@ func (s *poseTracker) Close(context.Context) error {
 	return nil
 }
 
+func (s *poseTracker) Status(ctx context.Context) (map[string]interface{}, error) {
+	return map[string]interface{}{}, nil
+}
+
 func (t *poseTracker) trackingLoop(ctx context.Context) {
 	t.logger.Info("Starting tracking loop")
 	t.logger.Info("Update rate: %f Hz", t.cfg.UpdateRateHz)
