@@ -3,8 +3,8 @@ module ptztracker
 go 1.26.0
 
 require (
-	github.com/erh/vmodutils v0.4.5
-	go.viam.com/rdk v1.10.0
+	github.com/erh/vmodutils v0.4.6
+	go.viam.com/rdk v1.11.0
 )
 
 require (
@@ -191,9 +191,9 @@ require (
 	go.uber.org/goleak v1.3.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.28.0 // indirect
-	go.viam.com/api v0.1.588 // indirect
+	go.viam.com/api v0.1.590 // indirect
 	go.viam.com/test v1.2.5 // indirect
-	go.viam.com/utils v0.13.0 // indirect
+	go.viam.com/utils v0.13.2 // indirect
 	go4.org/unsafe/assume-no-moving-gc v0.0.0-20230525183740-e7c30c78aeb2 // indirect
 	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/exp v0.0.0-20260709172345-9ea1abe57597 // indirect
@@ -212,7 +212,7 @@ require (
 	google.golang.org/api v0.288.0 // indirect
 	google.golang.org/genproto v0.0.0-20260713224248-f5fc221cf8c4 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260803160001-6ac0973c030d // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260928230214-8a89bd6388cc // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20261005182115-fad411399dd8 // indirect
 	google.golang.org/grpc v1.84.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
