@@ -3,8 +3,8 @@ module ptztracker
 go 1.26.0
 
 require (
-	github.com/erh/vmodutils v0.4.6
-	go.viam.com/rdk v1.11.0
+	github.com/erh/vmodutils v0.4.7
+	go.viam.com/rdk v1.12.0
 )
 
 require (
@@ -222,5 +222,3 @@ require (
 	gorgonia.org/vecf64 v0.9.0 // indirect
 	nhooyr.io/websocket v1.8.17 // indirect
 )
-
-replace github.com/erh/vmodutils => ./patches/vmodutils
