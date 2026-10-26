@@ -17,10 +17,7 @@ import (
 	genericservice "go.viam.com/rdk/services/generic"
 )
 
-var (
-	PoseTracker      = resource.NewModel("viam-labs", "ptz-tracker", "pose-tracker")
-	errUnimplemented = errors.New("unimplemented")
-)
+var PoseTracker = resource.NewModel("viam-labs", "ptz-tracker", "pose-tracker")
 
 func init() {
 	resource.RegisterService(genericservice.API, PoseTracker,
@@ -171,7 +168,7 @@ func (s *poseTracker) Status(ctx context.Context) (map[string]interface{}, error
 func (t *poseTracker) trackingLoop(ctx context.Context) {
 	t.logger.Info("Starting tracking loop")
 	t.logger.Info("Update rate: %f Hz", t.cfg.UpdateRateHz)
-	var updateInterval time.Duration = time.Duration(1.0 / t.cfg.UpdateRateHz * float64(time.Second))
+	updateInterval := time.Duration(1.0 / t.cfg.UpdateRateHz * float64(time.Second))
 	t.logger.Info("Update interval: %v", updateInterval)
 	ticker := time.NewTicker(updateInterval)
 	defer ticker.Stop()
