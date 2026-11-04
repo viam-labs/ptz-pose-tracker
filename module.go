@@ -167,15 +167,15 @@ func (s *poseTracker) Status(ctx context.Context) (map[string]interface{}, error
 
 func (t *poseTracker) trackingLoop(ctx context.Context) {
 	t.logger.Info("Starting tracking loop")
-	t.logger.Info("Update rate: %f Hz", t.cfg.UpdateRateHz)
+	t.logger.Infof("Update rate: %f Hz", t.cfg.UpdateRateHz)
 	updateInterval := time.Duration(1.0 / t.cfg.UpdateRateHz * float64(time.Second))
-	t.logger.Info("Update interval: %v", updateInterval)
+	t.logger.Infof("Update interval: %v", updateInterval)
 	ticker := time.NewTicker(updateInterval)
 	defer ticker.Stop()
 
 	fsc, err := t.robotClient.FrameSystemConfig(ctx)
 	if err != nil {
-		t.logger.Error("Failed to get frame system config: %v", err)
+		t.logger.Errorf("Failed to get frame system config: %v", err)
 		return
 	}
 	for {
